@@ -15,6 +15,7 @@ import {
   Plus, Trash2, FileText, Send, X, Save, BadgePercent, Camera, Upload, ScanLine, RotateCw, CheckCircle2,
 } from "lucide-react";
 import { customers, inventory, formatINR } from "@/lib/mock-data";
+import { Endpoints } from "@/lib/api";
 
 export const Route = createFileRoute("/invoice")({
   head: () => ({ meta: [{ title: "New Invoice — Tally AI" }] }),
@@ -54,17 +55,32 @@ function InvoiceForm() {
   };
   const cancel = () => navigate({ to: "/" });
 
-  const startOcr = (source: "camera" | "file") => {
+  const startOcr = async (source: "camera" | "file", file?: File) => {
     setOcrOpen(true);
     setOcrState("scanning");
     setOcrText("");
-    toast.info(source === "camera" ? "Capturing bill…" : "Uploading bill…");
-    setTimeout(() => {
+    toast.info(source === "camera" ? "Capturing bill..." : "Uploading bill...");
+    if (!file) {
       setOcrState("done");
-      setOcrText(
-        "INVOICE\nFrom: Supreme Stationers\nDate: 2026-05-22\n\nPremium Ledger Book x 5 @ 450\nGel Pens (Box of 12) x 3 @ 240\nBonded Paper A4 x 4 @ 380\n\nSubtotal: 4,490\nGST 18%: 808\nTotal: 5,298",
-      );
-    }, 1200);
+      setOcrText("No file selected.");
+      return;
+    }
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await Endpoints.ocrProcess(form);
+      if (res?.error) {
+        setOcrText(`OCR error: ${res.error}`);
+      } else {
+        setOcrText(res?.text || "No text detected.");
+      }
+      setOcrState("done");
+    } catch (err) {
+      console.warn("OCR failed:", err);
+      setOcrText("OCR failed. Check the backend and try again.");
+      setOcrState("done");
+      toast.error("OCR failed");
+    }
   };
 
   const useExtracted = () => {
@@ -109,7 +125,7 @@ function InvoiceForm() {
                 <p className="text-xs text-muted-foreground">Use camera or upload — Tally AI extracts line items.</p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" className="rounded-full" onClick={() => startOcr("camera")}>
+                <Button variant="outline" className="rounded-full" onClick={() => fileRef.current?.click()}>
                   <Camera className="mr-1.5 h-4 w-4" /> Scan Bill
                 </Button>
                 <Button variant="outline" className="rounded-full" onClick={() => fileRef.current?.click()}>
@@ -117,7 +133,10 @@ function InvoiceForm() {
                 </Button>
                 <input
                   ref={fileRef} type="file" accept="image/*,application/pdf" hidden
-                  onChange={(e) => e.target.files && startOcr("file")}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) startOcr("file", f);
+                  }}
                 />
               </div>
             </CardContent>
@@ -318,7 +337,7 @@ function InvoiceForm() {
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" className="rounded-full" onClick={() => startOcr("file")}>
+            <Button variant="outline" className="rounded-full" onClick={() => fileRef.current?.click()}>
               <RotateCw className="mr-1.5 h-4 w-4" /> Retry
             </Button>
             <Button variant="ghost" className="rounded-full" onClick={() => setOcrOpen(false)}>

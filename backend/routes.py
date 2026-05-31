@@ -44,8 +44,10 @@ def voice_models():
 
 @api.post("/ocr/process")
 def ocr_process():
-    text = request.form.get("text") or ""
-    return jsonify(process_ocr(text))
+    if "file" not in request.files:
+        return jsonify({"error": "file is required"}), 400
+    path = save_upload(request.files["file"])
+    return jsonify(process_ocr(path))
 
 
 @api.get("/sync/queue")
