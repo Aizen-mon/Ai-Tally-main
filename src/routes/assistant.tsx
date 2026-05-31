@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Endpoints } from "@/lib/api";
 import {
   Sparkles, Send, FileText, Users, Package, TrendingUp,
   Mic, MicOff, Keyboard, Volume2, VolumeX, Trash2,
@@ -16,12 +17,12 @@ export const Route = createFileRoute("/assistant")({
   component: Assistant,
 });
 
-type Msg = { role: "user" | "ai"; text: string };
+type Msg = { id: string; role: "user" | "ai"; text: string };
 
 const seed: Msg[] = [
-  { role: "ai", text: "Good morning, Rohan. You have 3 invoices going overdue this week — totalling ₹4.6L. Want me to draft polite reminders?" },
-  { role: "user", text: "Yes. Also tell me which item is running low." },
-  { role: "ai", text: "Drafted 3 reminders (ready to review). Low stock: Invoice Printer Ribbon (6 left, reorder at 12) and Carbon Receipt Pad (18, reorder at 20)." },
+  { id: "m1", role: "ai", text: "Good morning, Rohan. You have 3 invoices going overdue this week — totalling ₹4.6L. Want me to draft polite reminders?" },
+  { id: "m2", role: "user", text: "Yes. Also tell me which item is running low." },
+  { id: "m3", role: "ai", text: "Drafted 3 reminders (ready to review). Low stock: Invoice Printer Ribbon (6 left, reorder at 12) and Carbon Receipt Pad (18, reorder at 20)." },
 ];
 
 const suggestions = [
@@ -46,15 +47,27 @@ function Assistant() {
     window.speechSynthesis.speak(u);
   };
 
-  const send = (text: string) => {
+  const send = async (text: string) => {
     if (!text.trim()) return;
-    setMsgs((m) => [...m, { role: "user", text }]);
+    const userId = Math.random().toString(36).slice(2);
+    const aiId = Math.random().toString(36).slice(2);
+    setMsgs((m) => [
+      ...m,
+      { id: userId, role: "user", text },
+      { id: aiId, role: "ai", text: "Got it — pulling that from your books now…" },
+    ]);
     setInput("");
-    setTimeout(() => {
-      const reply = "Got it — pulling that from your books now…";
-      setMsgs((m) => [...m, { role: "ai", text: reply }]);
+    try {
+      const res = await Endpoints.parse(text) as { response?: string; result?: { message?: string } };
+      const reply = res?.response || res?.result?.message || "Done.";
+      setMsgs((m) => m.map((msg) => (msg.id === aiId ? { ...msg, text: reply } : msg)));
       speak(reply);
-    }, 600);
+    } catch (err) {
+      console.warn("Assistant request failed:", err);
+      const reply = "Sorry, I could not reach the assistant. Check that the backend is running.";
+      setMsgs((m) => m.map((msg) => (msg.id === aiId ? { ...msg, text: reply } : msg)));
+      toast.error("Assistant backend is not reachable");
+    }
   };
 
   const toggleMic = () => {

@@ -226,6 +226,72 @@ def list_recent_activity() -> List[Dict[str, Any]]:
     )
 
 
+def dashboard_summary() -> Dict[str, Any]:
+    with get_db() as conn:
+        total_customers = conn.execute("SELECT COUNT(*) AS c FROM customers").fetchone()["c"]
+        revenue = conn.execute("SELECT COALESCE(SUM(amount), 0) AS s FROM invoices WHERE status = 'paid'").fetchone()["s"]
+        outstanding = conn.execute("SELECT COALESCE(SUM(amount), 0) AS s FROM invoices WHERE status != 'paid'").fetchone()["s"]
+        low_stock = conn.execute("SELECT COUNT(*) AS c FROM inventory_items WHERE stock <= reorder_level").fetchone()["c"]
+    return {
+        "customers": total_customers,
+        "revenue": revenue,
+        "outstanding": outstanding,
+        "lowStockItems": low_stock,
+    }
+
+
+def top_overdue_customers(limit: int = 5) -> List[Dict[str, Any]]:
+    return fetch_all(
+        """
+        SELECT id, company, name, balance, status
+        FROM customers
+        WHERE status = 'overdue'
+        ORDER BY balance DESC
+        LIMIT ?
+        """,
+        (limit,),
+    )
+
+
+def customers_summary() -> Dict[str, Any]:
+    with get_db() as conn:
+        total = conn.execute("SELECT COUNT(*) AS c FROM customers").fetchone()["c"]
+        overdue = conn.execute("SELECT COUNT(*) AS c FROM customers WHERE status = 'overdue'").fetchone()["c"]
+        balance = conn.execute("SELECT COALESCE(SUM(balance), 0) AS s FROM customers").fetchone()["s"]
+    return {"total": total, "overdue": overdue, "balance": balance}
+
+
+def invoices_summary() -> Dict[str, Any]:
+    with get_db() as conn:
+        total = conn.execute("SELECT COUNT(*) AS c FROM invoices").fetchone()["c"]
+        paid = conn.execute("SELECT COUNT(*) AS c FROM invoices WHERE status = 'paid'").fetchone()["c"]
+        pending = conn.execute("SELECT COUNT(*) AS c FROM invoices WHERE status = 'pending'").fetchone()["c"]
+        overdue = conn.execute("SELECT COUNT(*) AS c FROM invoices WHERE status = 'overdue'").fetchone()["c"]
+        amount = conn.execute("SELECT COALESCE(SUM(amount), 0) AS s FROM invoices").fetchone()["s"]
+    return {"total": total, "paid": paid, "pending": pending, "overdue": overdue, "amount": amount}
+
+
+def payments_summary() -> Dict[str, Any]:
+    with get_db() as conn:
+        total = conn.execute("SELECT COUNT(*) AS c FROM payments").fetchone()["c"]
+        amount = conn.execute("SELECT COALESCE(SUM(amount), 0) AS s FROM payments").fetchone()["s"]
+        last = conn.execute("SELECT amount, date, method FROM payments ORDER BY date DESC LIMIT 1").fetchone()
+    return {
+        "total": total,
+        "amount": amount,
+        "last": dict(last) if last else None,
+    }
+
+
+def sync_summary() -> Dict[str, Any]:
+    with get_db() as conn:
+        total = conn.execute("SELECT COUNT(*) AS c FROM sync_queue").fetchone()["c"]
+        pending = conn.execute("SELECT COUNT(*) AS c FROM sync_queue WHERE status = 'pending'").fetchone()["c"]
+        failed = conn.execute("SELECT COUNT(*) AS c FROM sync_queue WHERE status = 'failed'").fetchone()["c"]
+        done = conn.execute("SELECT COUNT(*) AS c FROM sync_queue WHERE status = 'done'").fetchone()["c"]
+    return {"total": total, "pending": pending, "failed": failed, "done": done}
+
+
 def insert_sync_queue(item_type: str, payload: Dict[str, Any], status: str = "pending") -> Dict[str, Any]:
     item = {
         "id": f"q{uuid4().hex[:8]}",

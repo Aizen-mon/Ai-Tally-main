@@ -15,6 +15,20 @@ class WorkflowEngine:
             return self._low_stock()
         if intent == "customer_balance":
             return self._customer_balance(entities)
+        if intent == "revenue_summary":
+            return self._revenue_summary()
+        if intent == "top_overdue_customers":
+            return self._top_overdue_customers()
+        if intent == "customers_summary":
+            return self._customers_summary()
+        if intent == "invoices_summary":
+            return self._invoices_summary()
+        if intent == "payments_summary":
+            return self._payments_summary()
+        if intent == "recent_activity":
+            return self._recent_activity()
+        if intent == "sync_summary":
+            return self._sync_summary()
         return {"status": "ignored", "message": "Intent not recognized"}
 
     def _create_invoice(self, entities: Dict[str, Any]) -> Dict[str, Any]:
@@ -95,4 +109,67 @@ class WorkflowEngine:
             "action": "customer_balance",
             "data": {"customer": customer},
             "message": f"{customer['company']} balance is {customer['balance']}",
+        }
+
+    def _revenue_summary(self) -> Dict[str, Any]:
+        summary = repositories.dashboard_summary()
+        return {
+            "status": "ok",
+            "action": "revenue_summary",
+            "data": {"summary": summary},
+            "message": f"Revenue {summary['revenue']} with {summary['lowStockItems']} low-stock items.",
+        }
+
+    def _top_overdue_customers(self) -> Dict[str, Any]:
+        customers = repositories.top_overdue_customers()
+        return {
+            "status": "ok",
+            "action": "top_overdue_customers",
+            "data": {"customers": customers},
+            "message": "Top overdue customers fetched.",
+        }
+
+    def _customers_summary(self) -> Dict[str, Any]:
+        summary = repositories.customers_summary()
+        return {
+            "status": "ok",
+            "action": "customers_summary",
+            "data": {"summary": summary},
+            "message": "Customers summary fetched.",
+        }
+
+    def _invoices_summary(self) -> Dict[str, Any]:
+        summary = repositories.invoices_summary()
+        return {
+            "status": "ok",
+            "action": "invoices_summary",
+            "data": {"summary": summary},
+            "message": "Invoices summary fetched.",
+        }
+
+    def _payments_summary(self) -> Dict[str, Any]:
+        summary = repositories.payments_summary()
+        return {
+            "status": "ok",
+            "action": "payments_summary",
+            "data": {"summary": summary},
+            "message": "Payments summary fetched.",
+        }
+
+    def _recent_activity(self) -> Dict[str, Any]:
+        activity = repositories.list_recent_activity()
+        return {
+            "status": "ok",
+            "action": "recent_activity",
+            "data": {"activity": activity},
+            "message": "Recent activity fetched.",
+        }
+
+    def _sync_summary(self) -> Dict[str, Any]:
+        summary = repositories.sync_summary()
+        return {
+            "status": "ok",
+            "action": "sync_summary",
+            "data": {"summary": summary},
+            "message": "Sync summary fetched.",
         }
