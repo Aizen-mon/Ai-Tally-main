@@ -23,6 +23,7 @@ export const Route = createFileRoute("/invoice")({
 });
 
 type LineItem = { id: string; itemId: string; qty: number; price: number };
+type OcrItem = { description: string; qty: number; price: number };
 
 function InvoiceForm() {
   const navigate = useNavigate();
@@ -30,11 +31,13 @@ function InvoiceForm() {
   const [lines, setLines] = useState<LineItem[]>([
     { id: "1", itemId: inventory[0].id, qty: 2, price: inventory[0].price },
   ]);
+  const [customerId, setCustomerId] = useState(customers[0].id);
   const [discountPct, setDiscountPct] = useState(0);
   const [discountOpen, setDiscountOpen] = useState(false);
   const [ocrOpen, setOcrOpen] = useState(false);
   const [ocrState, setOcrState] = useState<"idle" | "scanning" | "done">("idle");
   const [ocrText, setOcrText] = useState("");
+  const [ocrItems, setOcrItems] = useState<OcrItem[]>([]);
 
   const addLine = () =>
     setLines((l) => [...l, { id: Math.random().toString(36).slice(2), itemId: inventory[0].id, qty: 1, price: inventory[0].price }]);
@@ -46,9 +49,18 @@ function InvoiceForm() {
   const tax = Math.round(taxable * 0.18);
   const total = taxable + tax;
 
-  const sendToTally = () => {
-    toast.success("Invoice posted to Tally", { description: `Total ${formatINR(total)}` });
-    setTimeout(() => navigate({ to: "/" }), 700);
+  const sendToTally = async () => {
+    try {
+      const lineItems = lines.map((l) => ({ itemId: l.itemId, qty: l.qty, price: l.price }));
+      const payload = { amount: total, lineItems, status: "pending", customerId };
+      const created = await Endpoints.createInvoice(payload as any);
+      await Endpoints.sendInvoice({ number: created?.number ?? "" });
+      toast.success("Invoice posted to Tally", { description: `Total ${formatINR(total)}` });
+      setTimeout(() => navigate({ to: "/" }), 700);
+    } catch (err) {
+      console.warn("Invoice send failed:", err);
+      toast.error("Invoice send failed. Check the backend.");
+    }
   };
   const savePending = () => {
     toast.info("Saved as pending (offline) — will sync when online", { description: "Visible in Sync Queue" });
@@ -59,6 +71,7 @@ function InvoiceForm() {
     setOcrOpen(true);
     setOcrState("scanning");
     setOcrText("");
+    setOcrItems([]);
     toast.info(source === "camera" ? "Capturing bill..." : "Uploading bill...");
     if (!file) {
       setOcrState("done");
@@ -73,6 +86,21 @@ function InvoiceForm() {
         setOcrText(`OCR error: ${res.error}`);
       } else {
         setOcrText(res?.text || "No text detected.");
+        const items = Array.isArray(res?.items) ? (res.items as OcrItem[]) : [];
+        setOcrItems(items);
+        if (items.length) {
+          const nextLines = items.map((item) => {
+            const match = inventory.find((inv) => inv.name.toLowerCase().includes(item.description.toLowerCase()));
+            return {
+              id: Math.random().toString(36).slice(2),
+              itemId: match?.id ?? inventory[0].id,
+              qty: item.qty,
+              price: item.price,
+            };
+          });
+          setLines(nextLines);
+          toast.success("Invoice preview updated from scan");
+        }
       }
       setOcrState("done");
     } catch (err) {
@@ -84,11 +112,20 @@ function InvoiceForm() {
   };
 
   const useExtracted = () => {
-    setLines([
-      { id: "a", itemId: "i1", qty: 5, price: 450 },
-      { id: "b", itemId: "i5", qty: 3, price: 240 },
-      { id: "c", itemId: "i6", qty: 4, price: 380 },
-    ]);
+    if (!ocrItems.length) {
+      toast.error("No extracted items available");
+      return;
+    }
+    const nextLines = ocrItems.map((item) => {
+      const match = inventory.find((inv) => inv.name.toLowerCase().includes(item.description.toLowerCase()));
+      return {
+        id: Math.random().toString(36).slice(2),
+        itemId: match?.id ?? inventory[0].id,
+        qty: item.qty,
+        price: item.price,
+      };
+    });
+    setLines(nextLines);
     toast.success("Extracted items added to invoice");
     setOcrOpen(false);
     setOcrState("idle");
@@ -148,7 +185,7 @@ function InvoiceForm() {
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label>Customer</Label>
-                  <Select defaultValue={customers[0].id}>
+                  <Select value={customerId} onValueChange={setCustomerId}>
                     <SelectTrigger className="h-11 rounded-lg"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {customers.map((c) => (
@@ -343,7 +380,7 @@ function InvoiceForm() {
             <Button variant="ghost" className="rounded-full" onClick={() => setOcrOpen(false)}>
               <X className="mr-1.5 h-4 w-4" /> Close
             </Button>
-            <Button className="rounded-full bg-primary" disabled={ocrState !== "done"} onClick={useExtracted}>
+            <Button className="rounded-full bg-primary" disabled={ocrState !== "done" || !ocrItems.length} onClick={useExtracted}>
               <CheckCircle2 className="mr-1.5 h-4 w-4" /> Use Extracted Items
             </Button>
           </DialogFooter>
